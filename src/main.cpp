@@ -1,13 +1,23 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <DNSServer.h>
 #include <ESP8266WebServer.h>
+#include <ArduinoOTA.h>
+#include <DNSServer.h>
+#include <pgmspace.h>
+#include <LittleFS.h>
 
 #include "strings.h"
 
+#define AP_NAME "Incubator"
+
 IPAddress address(192,168,4,1);
-ESP8266WebServer server(address);
+IPAddress gateway(192,168,4,2);
+IPAddress subnet(255,255,255,0);
+
+ESP8266WebServer server(80);
 DNSServer dns;
+
+String sta_ssid, sta_password;
 
 unsigned long timer;
 
@@ -15,20 +25,81 @@ void handleRoot(void);
 void handleCmds(void);
 void handle404(void);
 
+void handleWiFiInfo(void);
+void handleControlPanel(void);
+void handleStaConf(void);
+
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
   Serial.begin(9600);
   while (!Serial);
 
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(address, address, IPAddress(255, 255, 255, 0));
-  WiFi.softAP("Incubator");
+  File ssid_file = LittleFS.open("/SSID", "r");
+  while (ssid_file.available()) {
+    int inc = ssid_file.read();
+    if (inc != -1)
+      sta_ssid += (char)inc;
+  }
+  ssid_file.close();
+
+  File password_file = LittleFS.open("/PASSWORD", "r");
+  while (password_file.available()) {
+    int inc = password_file.read();
+    if (inc != -1)
+      sta_password += (char)inc;
+  }
+  password_file.close();
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAPConfig(address, gateway, subnet);
+  WiFi.softAP(AP_NAME, NULL, 1, false);
+  if (sta_ssid != "" && sta_password != "") {
+    int wifi_status;
+    WiFi.begin(sta_ssid.c_str(), sta_password.c_str());
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(50);
+    }
+  }  
+
+  WiFi.printDiag(Serial);
+
+  ArduinoOTA.onStart([](){Serial.println("Start");});
+  ArduinoOTA.onEnd([](){Serial.println("\r\nEnd");});
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("%u%% done\r", (progress / (total / 100)));
+  });
+  
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error 0x%02X: ", error);
+    switch (error) {
+      case OTA_AUTH_ERROR:
+        Serial.println("Authentication failed");
+        break;
+      case OTA_BEGIN_ERROR:
+        Serial.println("OTA initialization failed");
+        break;
+      case OTA_CONNECT_ERROR:
+        Serial.println("OTA connection failed"); 
+        break;
+      case OTA_RECEIVE_ERROR:
+        Serial.println("OTA reception failed");
+        break;
+      case OTA_END_ERROR:
+        Serial.println("OTA end error");
+        break;
+    }
+  });
+  ArduinoOTA.begin();
 
   dns.setTTL(300);
   dns.start(53, "incubator.local", address);
 
   server.on("/", handleRoot);
+  server.on("/wifi_info", handleWiFiInfo);
+  server.on("/control_panel", handleControlPanel);
+  server.on("/staconf", handleStaConf);
   server.on("/control", handleCmds);
   server.onNotFound(handle404);
   server.begin();
@@ -77,4 +148,50 @@ void handle404(void) {
 
 void handleRoot(void) {
   server.send(200, "text/html", msgWelcome);
+}
+
+void handleControlPanel(void) {
+  char _msg[1024] = {0};
+  snprintf(_msg, 1024, msgControlPanel, 
+            sta_ssid.c_str(), sta_password.c_str());
+  server.send(200, "text/html", _msg);
+}
+
+void handleWiFiInfo(void) {
+  char _msg[1024] = {0};
+  snprintf(_msg, 1024, msgWiFiInfo, 
+            sta_ssid.c_str(), WiFi.localIP().toString().c_str());
+  server.send(200, "text/html", _msg);
+}
+
+void handleStaConf(void) {
+  String new_ssid = server.arg("ssid");
+  String new_password = server.arg("password");
+
+  sta_ssid = new_ssid;
+  sta_password = new_password;
+
+  File ssid_file = LittleFS.open("/SSID", "w");
+  for (int i = 0; i < new_ssid.length(); i++)
+    ssid_file.write(new_ssid[i]);
+  ssid_file.close();
+  
+  File password_file = LittleFS.open("/PASSWORD", "w");
+  for (int i = 0; i < new_password.length(); i++)
+    password_file.write(new_password[i]);
+  password_file.close();
+
+  server.sendHeader("Location", "/control_panel");
+  server.send(303);
+
+  WiFi.disconnect();
+  if (sta_ssid != "" && sta_password != "") {
+    WiFi.begin(sta_ssid.c_str(), sta_password.c_str());
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(50);
+    }
+  }
+    
+  WiFi.printDiag(Serial);
+
 }
