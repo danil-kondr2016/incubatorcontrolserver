@@ -65,32 +65,6 @@ void setup() {
 
   WiFi.printDiag(Serial);
 
-  ArduinoOTA.onStart([](){Serial.println("Start");});
-  ArduinoOTA.onEnd([](){Serial.println("\r\nEnd");});
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("%u%% done\r", (progress / (total / 100)));
-  });
-  
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error 0x%02X: ", error);
-    switch (error) {
-      case OTA_AUTH_ERROR:
-        Serial.println("Authentication failed");
-        break;
-      case OTA_BEGIN_ERROR:
-        Serial.println("OTA initialization failed");
-        break;
-      case OTA_CONNECT_ERROR:
-        Serial.println("OTA connection failed"); 
-        break;
-      case OTA_RECEIVE_ERROR:
-        Serial.println("OTA reception failed");
-        break;
-      case OTA_END_ERROR:
-        Serial.println("OTA end error");
-        break;
-    }
-  });
   ArduinoOTA.begin();
 
   dns.setTTL(300);
