@@ -25,7 +25,7 @@ const char msgWelcome[] PROGMEM =
   "<p align=\"center\">Created by Kondratenko Daniel in 2021</p>\r\n"
   "<hr>\r\n"
   "<p align=\"center\">"
-  "[<a href=\"/wifi_info\">Wi-Fi information</a>]&nbsp;"
+  "[<a href=\"/system_info\">Wi-Fi information</a>]&nbsp;"
   "[<a href=\"/control_panel\">Wi-Fi configuration</a>]\r\n"
   "</p><hr>\r\n" FOOTER "\r\n"
   "</body>\r\n"
@@ -53,10 +53,10 @@ const char msgControlPanel[] PROGMEM =
   "</body>\r\n"
   "</html>\r\n";
 
-const char msgWiFiInfo[] PROGMEM = 
+const char msgSystemInfo[] PROGMEM = 
   DOCTYPE_HTML4 "\r\n"
   "<html>\r\n"
-  "<head><title>Wi-Fi information | Incubator</title></head>\r\n"
+  "<head><title>System information | Incubator</title></head>\r\n"
   "<body>\r\n"
   "<h1 align=\"center\">The IoT-incubator</h1>\r\n"
   "<p align=\"center\">Created by Kondratenko Daniel in 2021</p>\r\n"
@@ -67,6 +67,10 @@ const char msgWiFiInfo[] PROGMEM =
   "<hr>\r\n"
   "<p><b>Wi-Fi station SSID:</b> &nbsp; %s</p>\r\n"
   "<p><b>Wi-Fi station local ID:</b> &nbsp; %s</p>\r\n"
+  "<p><b>Server state:</b></p>\r\n"
+  "<ul>\r\n"
+  "<li><b>MDNS responder state:</b> &nbsp; %s</li>\r\n"
+  "</ul>\r\n"
   "<hr>\r\n" FOOTER "\r\n"
   "</body>\r\n"
   "</html>\r\n";

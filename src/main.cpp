@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
-#include <ArduinoOTA.h>
+#include <ESP8266HTTPUpdateServer.h>
+#include <ESP8266mDNS.h>
 #include <DNSServer.h>
 #include <pgmspace.h>
 #include <LittleFS.h>
@@ -15,9 +16,12 @@ IPAddress gateway(192,168,4,2);
 IPAddress subnet(255,255,255,0);
 
 ESP8266WebServer server(80);
-DNSServer dns;
+ESP8266HTTPUpdateServer updater;
+//DNSServer dns;
 
 String sta_ssid, sta_password;
+
+bool mdns_state = false;
 
 unsigned long timer;
 
@@ -25,7 +29,7 @@ void handleRoot(void);
 void handleCmds(void);
 void handle404(void);
 
-void handleWiFiInfo(void);
+void handleSystemInfo(void);
 void handleControlPanel(void);
 void handleStaConf(void);
 
@@ -63,24 +67,27 @@ void setup() {
     }
   }  
 
-  WiFi.printDiag(Serial);
+  //dns.setTTL(300);
+  //dns.start(53, "incubator.local", address);
 
-  ArduinoOTA.begin();
-
-  dns.setTTL(300);
-  dns.start(53, "incubator.local", address);
+  mdns_state = MDNS.begin("incubator");
+  if (mdns_state)
+    MDNS.addService("incubator", "http", "tcp", 80);
 
   server.on("/", handleRoot);
-  server.on("/wifi_info", handleWiFiInfo);
+  server.on("/system_info", handleSystemInfo);
   server.on("/control_panel", handleControlPanel);
   server.on("/staconf", handleStaConf);
   server.on("/control", handleCmds);
   server.onNotFound(handle404);
+  updater.setup(&server);
   server.begin();
 }
 
 void loop() {
-  dns.processNextRequest();
+  if (mdns_state)
+    MDNS.update();
+//  dns.processNextRequest();
   server.handleClient();
 }
 
@@ -131,10 +138,11 @@ void handleControlPanel(void) {
   server.send(200, "text/html", _msg);
 }
 
-void handleWiFiInfo(void) {
+void handleSystemInfo(void) {
   char _msg[1024] = {0};
-  snprintf(_msg, 1024, msgWiFiInfo, 
-            sta_ssid.c_str(), WiFi.localIP().toString().c_str());
+  snprintf(_msg, 1024, msgSystemInfo, 
+            sta_ssid.c_str(), WiFi.localIP().toString().c_str(),
+            mdns_state ? "works" : "does not work");
   server.send(200, "text/html", _msg);
 }
 
@@ -165,7 +173,4 @@ void handleStaConf(void) {
       delay(50);
     }
   }
-    
-  WiFi.printDiag(Serial);
-
 }
