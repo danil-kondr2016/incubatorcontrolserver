@@ -35,7 +35,6 @@ void handleStaConf(void);
 
 void setup() {
   Serial.begin(9600);
-  while (!Serial);
 
   File ssid_file = LittleFS.open("/SSID", "r");
   while (ssid_file.available()) {
