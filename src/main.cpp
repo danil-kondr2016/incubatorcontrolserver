@@ -6,10 +6,16 @@
 #include <DNSServer.h>
 #include <pgmspace.h>
 #include <LittleFS.h>
+#include <Bounce2.h>
 
 #include "strings.h"
+#include "pins.h"
 
 #define AP_NAME "Incubator"
+#define ON  0
+#define OFF 1
+
+Bounce powerBtn;
 
 IPAddress address(192,168,4,1);
 IPAddress gateway(192,168,4,2);
@@ -22,8 +28,19 @@ ESP8266HTTPUpdateServer updater;
 String sta_ssid, sta_password;
 
 bool mdns_state = false;
+bool incubator_state = false;
 
 unsigned long timer;
+
+void toggleIncubator() {
+  if (incubator_state) {
+    incubator_state = false;
+    digitalWrite(PowerRelay, OFF);
+  } else {
+    incubator_state = true;
+    digitalWrite(PowerRelay, ON);
+  }
+}
 
 void handleRoot(void);
 void handleCmds(void);
@@ -52,8 +69,11 @@ void setup() {
   }
   password_file.close();
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  powerBtn.attach(PowerButton, INPUT);
+  powerBtn.interval(200);
+  pinMode(PowerRelay, OUTPUT);
+  digitalWrite(PowerRelay, OFF);
+  incubator_state = false;
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(address, gateway, subnet);
@@ -98,25 +118,35 @@ void handleCmds(void) {
 
   String cmd = server.arg("plain");
   String answer;
-  for (int i = 0; i < cmd.length(); i++) {
-    if (cmd[i] == '\r')
-      continue;
-    if (cmd[i] == '\n')
-      break;
-    Serial.print(cmd[i]);
+
+  if (cmd.startsWith("toggle_incubator")) {
+    // TODO: implement incubator power supply relay
+    incubator_state = !incubator_state;
+    answer = "success\r\n";
   }
-  Serial.print('\r');
-  Serial.print('\n');
-  timer = millis();
-  while (!Serial.available()) {
-    if ((millis() - timer) >= 1500) {
-      server.send(200, "text/plain", "timeout\r\n");
-      return;
+  if (incubator_state) {
+    for (int i = 0; i < cmd.length(); i++) {
+      if (cmd[i] == '\r')
+        continue;
+      if (cmd[i] == '\n')
+        break;
+      Serial.print(cmd[i]);
     }
-  }
-  while (Serial.available()) {
-    int inc = Serial.read();
-    answer += (char)inc;
+    Serial.print('\r');
+    Serial.print('\n');
+    timer = millis();
+    while (!Serial.available()) {
+      if ((millis() - timer) >= 1500) {
+        server.send(200, "text/plain", "timeout\r\n");
+        return;
+      }
+    }
+    while (Serial.available()) {
+      int inc = Serial.read();
+      answer += (char)inc;
+    }
+  } else {
+    answer = "turned_off\r\n";
   }
 
   server.send(200, "text/plain", answer);
