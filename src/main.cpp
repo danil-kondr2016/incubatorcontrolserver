@@ -12,10 +12,12 @@
 #include "pins.h"
 
 #define AP_NAME "Incubator"
+
 #define ON  0
 #define OFF 1
 
 Bounce powerBtn;
+Bounce resetBtn;
 
 IPAddress address(192,168,4,1);
 IPAddress gateway(192,168,4,2);
@@ -23,24 +25,17 @@ IPAddress subnet(255,255,255,0);
 
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer updater;
-//DNSServer dns;
 
 String sta_ssid, sta_password;
 
 bool mdns_state = false;
-bool incubator_state = false;
+bool lights = false;
 
 unsigned long timer;
 
-void toggleIncubator() {
-  if (incubator_state) {
-    incubator_state = false;
-    digitalWrite(PowerRelay, OFF);
-  } else {
-    incubator_state = true;
-    digitalWrite(PowerRelay, ON);
-  }
-}
+void toggleLights();
+void handleLights();
+void handleReset();
 
 void handleRoot(void);
 void handleCmds(void);
@@ -51,7 +46,7 @@ void handleControlPanel(void);
 void handleStaConf(void);
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(19200);
 
   File ssid_file = LittleFS.open("/SSID", "r");
   while (ssid_file.available()) {
@@ -73,7 +68,13 @@ void setup() {
   powerBtn.interval(200);
   pinMode(PowerRelay, OUTPUT);
   digitalWrite(PowerRelay, OFF);
-  incubator_state = false;
+  lights = false;
+
+  resetBtn.attach(ResetButton, INPUT);
+  resetBtn.interval(200);
+  pinMode(ResetRelay, OUTPUT);
+  digitalWrite(ResetRelay, OFF);
+  lights = false;
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(address, gateway, subnet);
@@ -104,10 +105,35 @@ void setup() {
 }
 
 void loop() {
+  handleLights();
+  handleReset();
   if (mdns_state)
     MDNS.update();
-//  dns.processNextRequest();
   server.handleClient();
+}
+
+void toggleLights() {
+  if (lights) {
+    digitalWrite(PowerRelay, OFF);
+  } else {
+    digitalWrite(PowerRelay, ON);
+  }
+  lights = !lights;
+}
+
+void handleLights() {
+  powerBtn.update();
+  if (powerBtn.fell())
+    toggleLights();
+}
+
+void handleReset() {
+  resetBtn.update();
+  if (resetBtn.fell()) {
+    digitalWrite(ResetRelay, ON);
+    delay(50);
+    digitalWrite(ResetRelay, OFF);
+  }
 }
 
 void handleCmds(void) {
@@ -119,34 +145,25 @@ void handleCmds(void) {
   String cmd = server.arg("plain");
   String answer;
 
-  if (cmd.startsWith("toggle_incubator")) {
-    // TODO: implement incubator power supply relay
-    incubator_state = !incubator_state;
-    answer = "success\r\n";
+  for (int i = 0; i < cmd.length(); i++) {
+    if (cmd[i] == '\r')
+      continue;
+    if (cmd[i] == '\n')
+      break;
+    Serial.print(cmd[i]);
   }
-  if (incubator_state) {
-    for (int i = 0; i < cmd.length(); i++) {
-      if (cmd[i] == '\r')
-        continue;
-      if (cmd[i] == '\n')
-        break;
-      Serial.print(cmd[i]);
+  Serial.print('\r');
+  Serial.print('\n');
+  timer = millis();
+  while (!Serial.available()) {
+    if ((millis() - timer) >= 1500) {
+      server.send(200, "text/plain", "timeout\r\n");
+      return;
     }
-    Serial.print('\r');
-    Serial.print('\n');
-    timer = millis();
-    while (!Serial.available()) {
-      if ((millis() - timer) >= 1500) {
-        server.send(200, "text/plain", "timeout\r\n");
-        return;
-      }
-    }
-    while (Serial.available()) {
-      int inc = Serial.read();
-      answer += (char)inc;
-    }
-  } else {
-    answer = "turned_off\r\n";
+  }
+  while (Serial.available()) {
+    int inc = Serial.read();
+    answer += (char)inc;
   }
 
   server.send(200, "text/plain", answer);
@@ -202,4 +219,39 @@ void handleStaConf(void) {
       delay(50);
     }
   }
+}
+
+void serialEvent() {
+  String ins;
+  while (Serial.available()) {
+    ins = Serial.readStringUntil('\n');
+    ins.trim();
+    Serial.println(ins);
+    if (ins == "lights_on") {
+      digitalWrite(PowerRelay, ON);
+      lights = true;
+      Serial.println("success");
+    }
+    else if (ins == "lights_off") {
+      digitalWrite(PowerRelay, OFF);
+      lights = false;
+      Serial.println("success");
+    }
+    else if (ins == "lights_state") {
+      if (lights) {
+        Serial.println("lights_on");
+      } else {
+        Serial.println("lights_off");
+      }
+    }
+    else if (ins == "reset") {
+      digitalWrite(ResetRelay, ON);
+      delay(50);
+      digitalWrite(ResetRelay, OFF);
+      Serial.println("success");
+    }
+    else if (ins == "lightscontrol") {
+      Serial.println("lightscontrol");
+    }
+  }  
 }
