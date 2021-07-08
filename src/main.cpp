@@ -226,7 +226,6 @@ void serialEvent() {
   while (Serial.available()) {
     ins = Serial.readStringUntil('\n');
     ins.trim();
-    Serial.println(ins);
     if (ins == "lights_on") {
       digitalWrite(PowerRelay, ON);
       lights = true;
